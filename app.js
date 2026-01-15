@@ -1,9 +1,9 @@
-const { useState, useEffect } = React;
+const { useState, useEffect, useRef } = React;
 
 // Icons
 const Plus = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>;
 const ArrowLeft = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>;
-const User = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>;
+const User = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>;
 const Calendar = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>;
 const Trash2 = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>;
 const Download = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>;
@@ -12,7 +12,6 @@ const Menu = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24
 const TrendingUp = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>;
 const Dumbbell = () => <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.4 14.4L9.6 9.6"></path><path d="M18.657 21.485a2 2 0 1 1-2.829-2.828l-1.767 1.768a2 2 0 1 1-2.829-2.829l6.364-6.364a2 2 0 1 1 2.829 2.829l-1.768 1.767a2 2 0 1 1 2.828 2.829z"></path><path d="m21.5 21.5-1.4-1.4"></path><path d="M3.9 3.9 2.5 2.5"></path><path d="M6.404 12.768a2 2 0 1 1-2.829-2.829l1.768-1.767a2 2 0 1 1-2.828-2.829l2.828-2.828a2 2 0 1 1 2.829 2.828l1.767-1.768a2 2 0 1 1 2.829 2.829z"></path></svg>;
 
-// NEW: Edit icon
 const Edit2 = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
     stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -22,6 +21,8 @@ const Edit2 = () => (
 );
 
 function PTClientTracker() {
+  const STORAGE_KEY = 'ptClients';
+
   const [clients, setClients] = useState([]);
   const [currentView, setCurrentView] = useState('list');
   const [selectedClient, setSelectedClient] = useState(null);
@@ -32,18 +33,32 @@ function PTClientTracker() {
     notes: ''
   });
 
-  // NEW: edit mode
   const [editingSessionId, setEditingSessionId] = useState(null);
 
+  // IMPORTANT: prevent overwriting existing data on first load
+  const hasLoadedRef = useRef(false);
+
   useEffect(() => {
-    const saved = localStorage.getItem('ptClients');
-    if (saved) {
-      setClients(JSON.parse(saved));
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          setClients(parsed);
+        }
+      }
+    } catch (e) {
+      // If storage is corrupted, we do NOT overwrite it automatically
+      console.error('Failed to load data from localStorage:', e);
+      alert('Saved data could not be loaded (corrupted). Please restore from a backup if you have one.');
+    } finally {
+      hasLoadedRef.current = true;
     }
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('ptClients', JSON.stringify(clients));
+    if (!hasLoadedRef.current) return;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(clients));
   }, [clients]);
 
   const resetSessionForm = () => {
@@ -68,7 +83,6 @@ function PTClientTracker() {
     setCurrentView('list');
   };
 
-  // NEW: start editing a session
   const startEditSession = (session) => {
     setEditingSessionId(session.id);
     setSessionData({
@@ -79,20 +93,17 @@ function PTClientTracker() {
     setCurrentView('addSession');
   };
 
-  // NEW: cancel editing
   const cancelEditSession = () => {
     setEditingSessionId(null);
     resetSessionForm();
   };
 
-  // UPDATED: add OR update session
   const addSession = () => {
     if (!sessionData.exercises.trim()) return;
 
     const updatedClients = clients.map(client => {
-      if (client.id !== selectedClient.id) return client;
+      if (!selectedClient || client.id !== selectedClient.id) return client;
 
-      // EDIT MODE: update existing session
       if (editingSessionId) {
         const updatedSessions = client.sessions.map(s => {
           if (s.id !== editingSessionId) return s;
@@ -104,13 +115,9 @@ function PTClientTracker() {
           };
         });
 
-        return {
-          ...client,
-          sessions: updatedSessions
-        };
+        return { ...client, sessions: updatedSessions };
       }
 
-      // ADD MODE: create new session
       const newSession = {
         id: Date.now(),
         date: sessionData.date,
@@ -118,19 +125,14 @@ function PTClientTracker() {
         notes: sessionData.notes
       };
 
-      return {
-        ...client,
-        sessions: [newSession, ...client.sessions]
-      };
+      return { ...client, sessions: [newSession, ...client.sessions] };
     });
 
     setClients(updatedClients);
 
-    // reset form + edit state
     setEditingSessionId(null);
     resetSessionForm();
 
-    // sync selected client
     const updated = updatedClients.find(c => c.id === selectedClient.id);
     setSelectedClient(updated);
     setCurrentView('client');
@@ -139,17 +141,13 @@ function PTClientTracker() {
   const deleteSession = (sessionId) => {
     const updatedClients = clients.map(client => {
       if (client.id === selectedClient.id) {
-        return {
-          ...client,
-          sessions: client.sessions.filter(s => s.id !== sessionId)
-        };
+        return { ...client, sessions: client.sessions.filter(s => s.id !== sessionId) };
       }
       return client;
     });
 
     setClients(updatedClients);
 
-    // If you delete the session currently being edited, exit edit mode
     if (editingSessionId === sessionId) {
       setEditingSessionId(null);
       resetSessionForm();
@@ -162,6 +160,9 @@ function PTClientTracker() {
   const deleteClient = (clientId) => {
     if (window.confirm('Delete this client and all their sessions?')) {
       setClients(clients.filter(c => c.id !== clientId));
+      setSelectedClient(null);
+      setEditingSessionId(null);
+      resetSessionForm();
       setCurrentView('list');
     }
   };
@@ -239,36 +240,17 @@ function PTClientTracker() {
 
             <label className="w-full bg-gradient-to-r from-blue-500 to-purple-500 text-white py-5 rounded-2xl font-semibold text-lg flex items-center justify-center gap-3 hover:shadow-lg hover:scale-[1.02] transition-all cursor-pointer">
               <Upload /> Restore from Backup
-              <input
-                type="file"
-                accept=".json"
-                onChange={importData}
-                className="hidden"
-              />
+              <input type="file" accept=".json" onChange={importData} className="hidden" />
             </label>
           </div>
 
           <div className="bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-200 rounded-2xl p-6 mt-6 shadow-md">
-            <h3 className="font-bold text-amber-900 mb-3 flex items-center gap-2 text-lg">
-              💡 Backup Tips
-            </h3>
+            <h3 className="font-bold text-amber-900 mb-3 flex items-center gap-2 text-lg">💡 Backup Tips</h3>
             <ul className="text-sm text-amber-800 space-y-2">
-              <li className="flex items-start gap-2">
-                <span className="text-amber-500 font-bold">•</span>
-                <span>Download backups regularly (weekly recommended)</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-amber-500 font-bold">•</span>
-                <span>Save backup files to Google Drive, Dropbox, or email them to yourself</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-amber-500 font-bold">•</span>
-                <span>Keep multiple backups in case one gets corrupted</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-amber-500 font-bold">•</span>
-                <span>Restoring will replace all current data</span>
-              </li>
+              <li className="flex items-start gap-2"><span className="text-amber-500 font-bold">•</span><span>Download backups regularly (weekly recommended)</span></li>
+              <li className="flex items-start gap-2"><span className="text-amber-500 font-bold">•</span><span>Save backup files to Google Drive, Dropbox, or email them to yourself</span></li>
+              <li className="flex items-start gap-2"><span className="text-amber-500 font-bold">•</span><span>Keep multiple backups in case one gets corrupted</span></li>
+              <li className="flex items-start gap-2"><span className="text-amber-500 font-bold">•</span><span>Restoring will replace all current data</span></li>
             </ul>
           </div>
         </div>
@@ -486,10 +468,12 @@ function PTClientTracker() {
                       </button>
                     </div>
                   </div>
+
                   <div className="mb-3 pl-2">
                     <h4 className="font-bold text-purple-700 mb-2 text-sm uppercase tracking-wide">Exercises</h4>
                     <p className="text-gray-800 whitespace-pre-wrap leading-relaxed">{session.exercises}</p>
                   </div>
+
                   {session.notes && (
                     <div className="pl-2 pt-3 border-t border-purple-100">
                       <h4 className="font-bold text-purple-700 mb-2 text-sm uppercase tracking-wide">Notes</h4>
@@ -511,10 +495,7 @@ function PTClientTracker() {
       <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-cyan-50 p-4">
         <div className="max-w-2xl mx-auto">
           <button
-            onClick={() => {
-              // If you leave mid-edit, don’t keep half-edits hanging
-              setCurrentView('client');
-            }}
+            onClick={() => setCurrentView('client')}
             className="mb-6 flex items-center gap-2 text-purple-600 font-semibold text-lg hover:text-purple-700 transition"
           >
             <ArrowLeft /> Back
