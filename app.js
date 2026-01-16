@@ -23,7 +23,7 @@ function setUnauthorizedHandler(handler) {
   onUnauthorized = handler;
 }
 
-async function apiFetch(path, { method = "GET", token, headers = {}, body, skipAuthReset = false } = {}) {
+async function apiFetch(path, { method = "POST", token, headers = {}, body, skipAuthReset = false } = {}) {
   const url = `${API_BASE}${path}`;
   const finalHeaders = { ...headers };
   if (token) finalHeaders["Authorization"] = `Bearer ${token}`;
