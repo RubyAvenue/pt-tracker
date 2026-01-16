@@ -15,9 +15,11 @@ services:
     build:
       context: ./backend
     restart: unless-stopped
+    working_dir: /app
     env_file:
       - ./backend/.env
     environment:
+      PYTHONPATH: /app
       DATABASE_URL: postgresql+psycopg://pt_user:pt_password@postgres:5432/pt_tracker
     depends_on:
       - postgres
