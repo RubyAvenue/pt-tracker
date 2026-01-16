@@ -1,11 +1,22 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#9333ea">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <title>Donna Treanor @ Maxx</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#9333ea" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+
+    <!-- Default title - will be replaced after login -->
+    <title>PT Tracker</title>
+
+    <!-- Set your API base URL here -->
+    <script>
+      // Local dev:
+      window.__PT_API_BASE__ = "http://localhost:8787";
+      // When you deploy the backend on VPS, change to e.g:
+      // window.__PT_API_BASE__ = "https://pt-api.yourdomain.com";
+    </script>
+
     <script src="https://cdn.tailwindcss.com"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
