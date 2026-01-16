@@ -1,0 +1,28 @@
+services:
+  postgres:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pt_user
+      POSTGRES_PASSWORD: pt_password
+      POSTGRES_DB: pt_tracker
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  api:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+psycopg://pt_user:pt_password@postgres:5432/pt_tracker
+    depends_on:
+      - postgres
+    ports:
+      - "8787:8787"
+
+volumes:
+  pg_data:
