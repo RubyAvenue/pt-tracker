@@ -1,7 +1,7 @@
 const { useState, useEffect, useMemo } = React;
 
 // ---------- CONFIG ----------
-const API_BASE = (window.__PT_API_BASE__ || "").replace(/\/+$/, "");
+const API_BASE = (window.__PT_API_BASE__ || "/api/v1").replace(/\/+$/, "");
 const LS_TOKEN_KEY = "pt_auth_token";
 const LS_CLIENTS_KEY = "ptClients";
 
@@ -17,7 +17,13 @@ const Menu = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24
 const Dumbbell = () => <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.4 14.4L9.6 9.6"></path><path d="M18.657 21.485a2 2 0 1 1-2.829-2.828l-1.767 1.768a2 2 0 1 1-2.829-2.829l6.364-6.364a2 2 0 1 1 2.829 2.829l-1.768 1.767a2 2 0 1 1 2.828 2.829z"></path><path d="m21.5 21.5-1.4-1.4"></path><path d="M3.9 3.9 2.5 2.5"></path><path d="M6.404 12.768a2 2 0 1 1-2.829-2.829l1.768-1.767a2 2 0 1 1-2.828-2.829l2.828-2.828a2 2 0 1 1 2.829 2.828l1.767-1.768a2 2 0 1 1 2.829 2.829z"></path></svg>;
 
 // ---------- API helpers ----------
-async function apiFetch(path, { method = "GET", token, headers = {}, body } = {}) {
+let onUnauthorized = null;
+
+function setUnauthorizedHandler(handler) {
+  onUnauthorized = handler;
+}
+
+async function apiFetch(path, { method = "GET", token, headers = {}, body, skipAuthReset = false } = {}) {
   const url = `${API_BASE}${path}`;
   const finalHeaders = { ...headers };
   if (token) finalHeaders["Authorization"] = `Bearer ${token}`;
@@ -34,6 +40,9 @@ async function apiFetch(path, { method = "GET", token, headers = {}, body } = {}
   try { data = text ? JSON.parse(text) : null; } catch (_) { data = text; }
 
   if (!res.ok) {
+    if (res.status === 401 && !skipAuthReset && typeof onUnauthorized === "function") {
+      onUnauthorized();
+    }
     const msg = (data && data.detail) ? (typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail)) : `Request failed (${res.status})`;
     const err = new Error(msg);
     err.status = res.status;
@@ -44,21 +53,22 @@ async function apiFetch(path, { method = "GET", token, headers = {}, body } = {}
 }
 
 async function login(email, password) {
-  return apiFetch("/api/v1/auth/login", {
+  return apiFetch("/auth/login", {
     method: "POST",
-    body: { email, password }
+    body: { email, password },
+    skipAuthReset: true
   });
 }
 
-async function fetchTrainerMe(token) {
-  return apiFetch("/api/v1/trainers/me", {
-    method: "GET",
+async function fetchMe(token) {
+  return apiFetch("/auth/me", {
+    method: "POST",
     token
   });
 }
 
 // ---------- UI: Login Screen ----------
-function LoginScreen({ onLoginSuccess }) {
+function LoginScreen({ onLoginSuccess, sessionMessage }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -76,7 +86,11 @@ function LoginScreen({ onLoginSuccess }) {
       if (!token) throw new Error("Login response missing access_token.");
       onLoginSuccess(token);
     } catch (e) {
-      setErr(e.message || "Login failed");
+      if (e?.status === 401) {
+        setErr("Invalid email or password.");
+      } else {
+        setErr(e.message || "Login failed");
+      }
     } finally {
       setBusy(false);
     }
@@ -96,6 +110,11 @@ function LoginScreen({ onLoginSuccess }) {
             </div>
           </div>
 
+          {sessionMessage && (
+            <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-xl p-3 mb-4 text-sm">
+              {sessionMessage}
+            </div>
+          )}
           {err && (
             <div className="bg-red-50 border border-red-200 text-red-800 rounded-xl p-3 mb-4 text-sm">
               {err}
@@ -152,7 +171,7 @@ function LoginScreen({ onLoginSuccess }) {
 function PTClientTracker() {
   const [authToken, setAuthToken] = useState(localStorage.getItem(LS_TOKEN_KEY) || "");
   const [me, setMe] = useState(null);
-  const [authError, setAuthError] = useState("");
+  const [authMessage, setAuthMessage] = useState("");
 
   const [clients, setClients] = useState([]);
   const [currentView, setCurrentView] = useState("list");
@@ -176,7 +195,7 @@ function PTClientTracker() {
     localStorage.setItem(LS_CLIENTS_KEY, JSON.stringify(clients));
   }, [clients]);
 
-  // If token exists, load /trainers/me
+  // If token exists, load /auth/me
   useEffect(() => {
     let cancelled = false;
 
@@ -186,16 +205,18 @@ function PTClientTracker() {
         return;
       }
       try {
-        const user = await fetchTrainerMe(authToken);
+        const user = await fetchMe(authToken);
         if (cancelled) return;
         setMe(user);
-        setAuthError("");
+        setAuthMessage("");
 
         const name = user?.display_name || "PT Tracker";
         document.title = `${name} @ Maxx`;
       } catch (e) {
         if (cancelled) return;
-        setAuthError(e.message || "Auth error");
+        if (e?.status !== 401) {
+          setAuthMessage(e.message || "Auth error");
+        }
         setMe(null);
       }
     }
@@ -204,9 +225,28 @@ function PTClientTracker() {
     return () => { cancelled = true; };
   }, [authToken]);
 
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      localStorage.removeItem(LS_TOKEN_KEY);
+      setAuthToken("");
+      setMe(null);
+      setAuthMessage("Session expired, please log in again.");
+      setCurrentView("list");
+    });
+  }, []);
+
   const handleLoginSuccess = async (token) => {
     localStorage.setItem(LS_TOKEN_KEY, token);
     setAuthToken(token);
+    try {
+      const user = await fetchMe(token);
+      setMe(user);
+      setAuthMessage("");
+    } catch (e) {
+      if (e?.status !== 401) {
+        setAuthMessage(e.message || "Auth error");
+      }
+    }
   };
 
   const logout = () => {
@@ -214,22 +254,19 @@ function PTClientTracker() {
     setAuthToken("");
     setMe(null);
     setCurrentView("list");
+    setAuthMessage("");
   };
 
   // If not logged in (or token invalid), show login
   if (!authToken || !me) {
     return (
       <>
-        <LoginScreen onLoginSuccess={handleLoginSuccess} />
-        {authToken && authError && (
-          <div className="fixed bottom-4 left-4 right-4 max-w-md mx-auto bg-amber-50 border border-amber-200 text-amber-900 rounded-xl p-3 text-sm shadow">
-            Logged in token failed: {authError}. Try signing in again.
-            <button className="ml-2 underline font-semibold" onClick={logout}>Clear token</button>
-          </div>
-        )}
+        <LoginScreen onLoginSuccess={handleLoginSuccess} sessionMessage={authMessage} />
       </>
     );
   }
+
+  const isAdmin = me?.role === "admin";
 
   // ---------- Existing functions (local storage) ----------
   const addClient = () => {
@@ -412,6 +449,7 @@ function PTClientTracker() {
               <div>
                 <h1 className="text-2xl font-bold text-gray-800">{(me.display_name || "PT Tracker")} @ Maxx</h1>
                 <p className="text-gray-600">{clients.length} clients</p>
+                <p className="text-xs text-gray-500">{me.email || "Unknown email"} · {isAdmin ? "admin" : (me.role || "user")}</p>
               </div>
             </div>
 

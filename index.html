@@ -11,10 +11,8 @@
 
     <!-- Set your API base URL here -->
     <script>
-      // Local dev:
-      window.__PT_API_BASE__ = "http://localhost:8787";
-      // When you deploy the backend on VPS, change to e.g:
-      // window.__PT_API_BASE__ = "https://pt-api.yourdomain.com";
+      // Local dev + VPS: proxy under the same domain
+      window.__PT_API_BASE__ = "/api/v1";
     </script>
 
     <script src="https://cdn.tailwindcss.com"></script>
