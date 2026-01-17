@@ -16,6 +16,16 @@ from app.schemas.session import ExerciseHistoryItem
 router = APIRouter(prefix="/clients", tags=["clients"])
 
 
+def _is_admin_user(user: User) -> bool:
+    if getattr(user, "role", None) == "admin":
+        return True
+    if getattr(user, "is_admin", False):
+        return True
+    if getattr(user, "is_superuser", False):
+        return True
+    return False
+
+
 def _normalize_exercise_name(value: str) -> str:
     return " ".join(value.strip().split()).lower()
 
@@ -25,7 +35,7 @@ def list_clients(
     db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ) -> list[ClientRead]:
     stmt = select(Client).order_by(Client.created_at.desc())
-    if user.role != "admin":
+    if not _is_admin_user(user):
         stmt = stmt.where(Client.user_id == user.id)
     return db.scalars(stmt).all()
 
@@ -40,7 +50,7 @@ def list_exercise_history(
     user: User = Depends(get_current_user),
 ) -> list[ExerciseHistoryItem]:
     stmt = select(Client).where(Client.id == client_id)
-    if user.role != "admin":
+    if not _is_admin_user(user):
         stmt = stmt.where(Client.user_id == user.id)
     client = db.scalar(stmt)
     if not client:
