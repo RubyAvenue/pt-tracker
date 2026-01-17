@@ -2,6 +2,7 @@ const { useState, useEffect } = React;
 
 // ---------- CONFIG ----------
 const API_BASE = (window.__PT_API_BASE__ || "/api/v1").replace(/\/+$/, "");
+const DEFAULT_BUILD = window.__PT_BUILD__ || "unknown";
 const LS_TOKEN_KEY = "pt_auth_token";
 
 // ---------- Icons ----------
@@ -126,6 +127,18 @@ async function createSessionItemRequest(token, sessionId, payload) {
   });
 }
 
+async function fetchExerciseHistory(token, clientId, name, { limit = 20, offset = 0 } = {}) {
+  const params = new URLSearchParams({
+    name: name || "",
+    limit: String(limit),
+    offset: String(offset)
+  });
+  return apiFetch(`/clients/${clientId}/exercise-history?${params.toString()}`, {
+    method: "GET",
+    token
+  });
+}
+
 async function updateSessionItemRequest(token, sessionId, itemId, payload) {
   return apiFetch(`/sessions/${sessionId}/items/${itemId}`, {
     method: "PATCH",
@@ -160,6 +173,13 @@ async function signupWithInvite(payload) {
   return apiFetch("/auth/signup-with-invite", {
     method: "POST",
     body: payload
+  });
+}
+
+async function fetchVersion() {
+  return apiFetch("/version", {
+    method: "GET",
+    skipAuthReset: true
   });
 }
 
@@ -442,6 +462,7 @@ function PTClientTracker() {
   const [authToken, setAuthToken] = useState(localStorage.getItem(LS_TOKEN_KEY) || "");
   const [me, setMe] = useState(null);
   const [authMessage, setAuthMessage] = useState("");
+  const [buildCommit, setBuildCommit] = useState(DEFAULT_BUILD);
 
   const [clients, setClients] = useState([]);
   const [clientsLoading, setClientsLoading] = useState(false);
@@ -452,6 +473,11 @@ function PTClientTracker() {
   const [sessions, setSessions] = useState([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [sessionsError, setSessionsError] = useState("");
+  const [clientTab, setClientTab] = useState("sessions");
+  const [progressName, setProgressName] = useState("");
+  const [progressLoading, setProgressLoading] = useState(false);
+  const [progressError, setProgressError] = useState("");
+  const [progressResults, setProgressResults] = useState([]);
   const [selectedSession, setSelectedSession] = useState(null);
   const [sessionDetails, setSessionDetails] = useState(null);
   const [sessionItems, setSessionItems] = useState([]);
@@ -497,10 +523,30 @@ function PTClientTracker() {
   }, [authToken]);
 
   useEffect(() => {
+    let cancelled = false;
+    fetchVersion()
+      .then((data) => {
+        if (cancelled) return;
+        setBuildCommit(data?.commit || DEFAULT_BUILD);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
     const handleHashChange = () => setRoute(parseHashRoute());
     window.addEventListener("hashchange", handleHashChange);
     return () => window.removeEventListener("hashchange", handleHashChange);
   }, []);
+
+  useEffect(() => {
+    if (clientTab !== "progress" || !selectedClient) return;
+    const key = `pt_progress_exercise_${selectedClient.id}`;
+    const saved = sessionStorage.getItem(key);
+    if (saved && saved !== progressName) {
+      setProgressName(saved);
+    }
+  }, [clientTab, selectedClient, progressName]);
 
   // If token exists, load /auth/me
   useEffect(() => {
@@ -789,6 +835,42 @@ function PTClientTracker() {
     e.target.value = "";
   };
 
+  const formatSetsRepsWeight = (sets, reps, weight) => {
+    if (sets == null && reps == null && weight == null) return null;
+    const parts = [];
+    if (sets != null) parts.push(`${sets} sets`);
+    if (reps != null) parts.push(`${reps} reps`);
+    if (weight != null) parts.push(`${weight} kg`);
+    return parts.join(" · ");
+  };
+
+  const statusBadgeClass = (status) => {
+    const base = "px-2 py-1 rounded-full text-xs font-semibold";
+    if (status === "completed") return `${base} bg-green-100 text-green-700`;
+    if (status === "in_progress") return `${base} bg-blue-100 text-blue-700`;
+    return `${base} bg-amber-100 text-amber-700`;
+  };
+
+  const handleProgressSearch = async () => {
+    if (!selectedClient) return;
+    const trimmed = progressName.trim();
+    if (!trimmed) {
+      setProgressError("Enter an exercise name.");
+      return;
+    }
+    setProgressError("");
+    setProgressLoading(true);
+    try {
+      const data = await fetchExerciseHistory(authToken, selectedClient.id, trimmed);
+      setProgressResults(Array.isArray(data) ? data : []);
+      sessionStorage.setItem(`pt_progress_exercise_${selectedClient.id}`, trimmed);
+    } catch (e) {
+      setProgressError(e.message || "Failed to load exercise history");
+    } finally {
+      setProgressLoading(false);
+    }
+  };
+
   // ---------- MENU VIEW ----------
   if (currentView === "menu") {
     return (
@@ -859,6 +941,10 @@ function PTClientTracker() {
               <li className="flex items-start gap-2"><span className="text-amber-500 font-bold">•</span><span>Save backup files to Google Drive/Dropbox or email them to yourself</span></li>
               <li className="flex items-start gap-2"><span className="text-amber-500 font-bold">•</span><span>Keep multiple backups in case one gets corrupted</span></li>
             </ul>
+          </div>
+
+          <div className="mt-6 text-center text-xs text-gray-500">
+            PT Tracker · build {buildCommit}
           </div>
         </div>
       </div>
@@ -1218,6 +1304,10 @@ function PTClientTracker() {
                   className="flex-1 text-left"
                   onClick={() => {
                     setSelectedClient(client);
+                    setClientTab("sessions");
+                    setProgressName("");
+                    setProgressError("");
+                    setProgressResults([]);
                     setSessionForm({
                       session_date: new Date().toISOString().split("T")[0],
                       status: "planned",
@@ -1269,85 +1359,200 @@ function PTClientTracker() {
             <p className="text-gray-600 mt-1">{sessions.length} sessions</p>
           </div>
 
-          <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl p-6 border border-purple-100 mb-6">
-            <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-              <Calendar /> Create Session
-            </h3>
-
-            <div className="space-y-3">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <input
-                  type="date"
-                  value={sessionForm.session_date}
-                  onChange={(e) => setSessionForm({ ...sessionForm, session_date: e.target.value })}
-                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
-                />
-                <select
-                  value={sessionForm.status}
-                  onChange={(e) => setSessionForm({ ...sessionForm, status: e.target.value })}
-                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl p-2 border border-purple-100 mb-6">
+            <div className="grid grid-cols-3 text-sm font-semibold text-gray-600">
+              {["sessions", "progress", "compare"].map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setClientTab(tab)}
+                  className={`px-4 py-3 rounded-xl transition ${
+                    clientTab === tab
+                      ? "bg-gradient-to-r from-purple-600 to-blue-600 text-white"
+                      : "hover:bg-gray-50"
+                  }`}
                 >
-                  <option value="planned">Planned</option>
-                  <option value="in_progress">In progress</option>
-                  <option value="completed">Completed</option>
-                </select>
-              </div>
-
-              <textarea
-                value={sessionForm.notes}
-                onChange={(e) => setSessionForm({ ...sessionForm, notes: e.target.value })}
-                placeholder="Session notes (optional)"
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white min-h-[90px]"
-              />
-
-              <button
-                onClick={handleCreateSession}
-                className="w-full bg-gradient-to-r from-purple-600 to-blue-600 text-white py-4 rounded-2xl font-semibold text-lg hover:shadow-lg hover:scale-[1.01] transition-all"
-              >
-                Create Session
-              </button>
+                  {tab === "sessions" ? "Sessions" : tab === "progress" ? "Progress" : "Compare"}
+                </button>
+              ))}
             </div>
           </div>
 
-          <div className="space-y-3">
-            {sessionsError && (
-              <div className="bg-red-50 border border-red-200 text-red-800 rounded-2xl p-3 text-sm">
-                {sessionsError}
-              </div>
-            )}
+          {clientTab === "sessions" && (
+            <>
+              <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl p-6 border border-purple-100 mb-6">
+                <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                  <Calendar /> Create Session
+                </h3>
 
-            {sessionsLoading && (
-              <div className="text-center text-gray-600 bg-white/70 rounded-2xl p-6 border border-purple-100">
-                Loading sessions...
-              </div>
-            )}
-
-            {!sessionsLoading && sessions.length === 0 && (
-              <div className="text-center text-gray-600 bg-white/70 rounded-2xl p-8 border border-purple-100">
-                No sessions yet — create the first one above.
-              </div>
-            )}
-
-            {sessions.map((s) => (
-              <div key={s.id} className="bg-white/80 backdrop-blur-sm rounded-2xl shadow p-5 border border-purple-100">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="font-bold text-gray-800">{s.session_date}</div>
-                    <div className="text-sm text-gray-600 mt-1">Status: {s.status || "planned"}</div>
-                    {s.notes?.trim() ? (
-                      <div className="text-sm text-gray-600 whitespace-pre-wrap mt-2">{s.notes}</div>
-                    ) : null}
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <input
+                      type="date"
+                      value={sessionForm.session_date}
+                      onChange={(e) => setSessionForm({ ...sessionForm, session_date: e.target.value })}
+                      className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                    />
+                    <select
+                      value={sessionForm.status}
+                      onChange={(e) => setSessionForm({ ...sessionForm, status: e.target.value })}
+                      className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                    >
+                      <option value="planned">Planned</option>
+                      <option value="in_progress">In progress</option>
+                      <option value="completed">Completed</option>
+                    </select>
                   </div>
+
+                  <textarea
+                    value={sessionForm.notes}
+                    onChange={(e) => setSessionForm({ ...sessionForm, notes: e.target.value })}
+                    placeholder="Session notes (optional)"
+                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white min-h-[90px]"
+                  />
+
                   <button
-                    onClick={() => openSession(s.id)}
-                    className="px-4 py-2 rounded-xl bg-white border border-gray-200 text-gray-800 font-semibold hover:bg-gray-50 transition"
+                    onClick={handleCreateSession}
+                    className="w-full bg-gradient-to-r from-purple-600 to-blue-600 text-white py-4 rounded-2xl font-semibold text-lg hover:shadow-lg hover:scale-[1.01] transition-all"
                   >
-                    Open
+                    Create Session
                   </button>
                 </div>
               </div>
-            ))}
-          </div>
+
+              <div className="space-y-3">
+                {sessionsError && (
+                  <div className="bg-red-50 border border-red-200 text-red-800 rounded-2xl p-3 text-sm">
+                    {sessionsError}
+                  </div>
+                )}
+
+                {sessionsLoading && (
+                  <div className="text-center text-gray-600 bg-white/70 rounded-2xl p-6 border border-purple-100">
+                    Loading sessions...
+                  </div>
+                )}
+
+                {!sessionsLoading && sessions.length === 0 && (
+                  <div className="text-center text-gray-600 bg-white/70 rounded-2xl p-8 border border-purple-100">
+                    No sessions yet — create the first one above.
+                  </div>
+                )}
+
+                {sessions.map((s) => (
+                  <div key={s.id} className="bg-white/80 backdrop-blur-sm rounded-2xl shadow p-5 border border-purple-100">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="font-bold text-gray-800">{s.session_date}</div>
+                        <div className="text-sm text-gray-600 mt-1">Status: {s.status || "planned"}</div>
+                        {s.notes?.trim() ? (
+                          <div className="text-sm text-gray-600 whitespace-pre-wrap mt-2">{s.notes}</div>
+                        ) : null}
+                      </div>
+                      <button
+                        onClick={() => openSession(s.id)}
+                        className="px-4 py-2 rounded-xl bg-white border border-gray-200 text-gray-800 font-semibold hover:bg-gray-50 transition"
+                      >
+                        Open
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {clientTab === "progress" && (
+            <>
+              <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl p-6 border border-purple-100 mb-6">
+                <h3 className="text-lg font-bold text-gray-800 mb-4">Exercise Progress</h3>
+                <div className="flex gap-3 flex-wrap">
+                  <input
+                    value={progressName}
+                    onChange={(e) => setProgressName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleProgressSearch();
+                    }}
+                    placeholder="Exercise name (e.g. Bench Press)"
+                    className="flex-1 min-w-[200px] px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                  />
+                  <button
+                    onClick={handleProgressSearch}
+                    className="px-5 py-3 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 text-white font-semibold hover:shadow-lg transition"
+                  >
+                    Search
+                  </button>
+                </div>
+              </div>
+
+              {progressError && (
+                <div className="bg-red-50 border border-red-200 text-red-800 rounded-2xl p-3 text-sm mb-4">
+                  {progressError}
+                </div>
+              )}
+
+              {progressLoading && (
+                <div className="text-center text-gray-600 bg-white/70 rounded-2xl p-6 border border-purple-100">
+                  Loading progress...
+                </div>
+              )}
+
+              {!progressLoading && progressResults.length === 0 && progressName.trim() && !progressError && (
+                <div className="text-center text-gray-600 bg-white/70 rounded-2xl p-6 border border-purple-100">
+                  No history found for that exercise.
+                </div>
+              )}
+
+              {!progressLoading && progressResults.length > 0 && (
+                <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl p-6 border border-purple-100">
+                  <div className="text-sm font-semibold text-gray-600 mb-4">
+                    History for “{progressName.trim()}”
+                  </div>
+                  <div className="space-y-6 border-l-2 border-purple-100 pl-6">
+                    {progressResults.map((item) => {
+                      const planned = formatSetsRepsWeight(item.planned_sets, item.planned_reps, item.planned_weight);
+                      const actual = formatSetsRepsWeight(item.actual_sets, item.actual_reps, item.actual_weight);
+                      return (
+                        <div key={item.item_id} className="relative">
+                          <div className="absolute -left-[33px] top-2 h-3 w-3 rounded-full bg-purple-400"></div>
+                          <div className="flex items-center justify-between gap-3 flex-wrap">
+                            <button
+                              onClick={() => openSession(item.session_id)}
+                              className="font-semibold text-purple-700 hover:underline"
+                            >
+                              {item.session_date}
+                            </button>
+                            <span className={statusBadgeClass(item.session_status || "planned")}>
+                              {item.session_status || "planned"}
+                            </span>
+                          </div>
+                          {planned && (
+                            <div className="text-sm text-gray-700 mt-2">
+                              Planned: {planned}
+                            </div>
+                          )}
+                          {actual && (
+                            <div className="text-sm text-gray-700 mt-1">
+                              Actual: {actual}
+                            </div>
+                          )}
+                          {item.notes?.trim() ? (
+                            <div className="text-sm text-gray-600 whitespace-pre-wrap mt-2">{item.notes}</div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {clientTab === "compare" && (
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl p-6 border border-purple-100">
+              <h3 className="text-lg font-bold text-gray-800 mb-2">Compare Sessions</h3>
+              <p className="text-gray-600 text-sm">Coming soon.</p>
+            </div>
+          )}
         </div>
       </div>
     );

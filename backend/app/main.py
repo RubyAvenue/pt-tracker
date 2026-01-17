@@ -8,6 +8,7 @@ from app.api.routes import (
     health_router,
     sessions_router,
     trainers_router,
+    version_router,
 )
 from app.core.config import settings
 
@@ -34,3 +35,4 @@ app.include_router(admin_router, prefix=settings.API_V1_STR)
 app.include_router(clients_router, prefix=settings.API_V1_STR)
 app.include_router(sessions_router, prefix=settings.API_V1_STR)
 app.include_router(trainers_router, prefix=settings.API_V1_STR)
+app.include_router(version_router, prefix=settings.API_V1_STR)

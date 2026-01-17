@@ -3,6 +3,7 @@ from app.api.routes.clients import router as clients_router
 from app.api.routes.health import router as health_router
 from app.api.routes.sessions import router as sessions_router
 from app.api.routes.trainers import router as trainers_router
+from app.api.routes.version import router as version_router
 
 __all__ = [
     "auth_router",
@@ -11,4 +12,5 @@ __all__ = [
     "health_router",
     "sessions_router",
     "trainers_router",
+    "version_router",
 ]

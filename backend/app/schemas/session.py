@@ -73,3 +73,17 @@ class SessionItemRead(SessionItemBase):
 
 class SessionReadWithItems(SessionRead):
     items: list[SessionItemRead] = []
+
+
+class ExerciseHistoryItem(BaseModel):
+    session_id: uuid.UUID
+    session_date: date
+    session_status: str
+    item_id: uuid.UUID
+    planned_sets: int | None = None
+    planned_reps: int | None = None
+    planned_weight: float | None = None
+    actual_sets: int | None = None
+    actual_reps: int | None = None
+    actual_weight: float | None = None
+    notes: str | None = None
