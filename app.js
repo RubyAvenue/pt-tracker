@@ -1,9 +1,8 @@
-const { useState, useEffect, useMemo } = React;
+const { useState, useEffect } = React;
 
 // ---------- CONFIG ----------
 const API_BASE = (window.__PT_API_BASE__ || "/api/v1").replace(/\/+$/, "");
 const LS_TOKEN_KEY = "pt_auth_token";
-const LS_CLIENTS_KEY = "ptClients";
 
 // ---------- Icons ----------
 const Plus = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>;
@@ -65,6 +64,146 @@ async function fetchMe(token) {
     method: "POST",
     token
   });
+}
+
+async function fetchClients(token) {
+  return apiFetch("/clients", {
+    method: "GET",
+    token
+  });
+}
+
+async function createClientRequest(token, payload) {
+  return apiFetch("/clients", {
+    method: "POST",
+    token,
+    body: payload
+  });
+}
+
+async function deleteClientRequest(token, clientId) {
+  return apiFetch(`/clients/${clientId}`, {
+    method: "DELETE",
+    token
+  });
+}
+
+async function fetchClientSessions(token, clientId) {
+  return apiFetch(`/clients/${clientId}/sessions`, {
+    method: "GET",
+    token
+  });
+}
+
+async function createSessionRequest(token, clientId, payload) {
+  return apiFetch(`/clients/${clientId}/sessions`, {
+    method: "POST",
+    token,
+    body: payload
+  });
+}
+
+async function fetchSessionRequest(token, sessionId) {
+  return apiFetch(`/sessions/${sessionId}`, {
+    method: "GET",
+    token
+  });
+}
+
+async function updateSessionRequest(token, sessionId, payload) {
+  return apiFetch(`/sessions/${sessionId}`, {
+    method: "PATCH",
+    token,
+    body: payload
+  });
+}
+
+async function createSessionItemRequest(token, sessionId, payload) {
+  return apiFetch(`/sessions/${sessionId}/items`, {
+    method: "POST",
+    token,
+    body: payload
+  });
+}
+
+async function updateSessionItemRequest(token, sessionId, itemId, payload) {
+  return apiFetch(`/sessions/${sessionId}/items/${itemId}`, {
+    method: "PATCH",
+    token,
+    body: payload
+  });
+}
+
+async function deleteSessionItemRequest(token, sessionId, itemId) {
+  return apiFetch(`/sessions/${sessionId}/items/${itemId}`, {
+    method: "DELETE",
+    token
+  });
+}
+
+async function createInvite(token) {
+  return apiFetch("/admin/invites", {
+    method: "POST",
+    token,
+    body: {}
+  });
+}
+
+async function listInvites(token) {
+  return apiFetch("/admin/invites", {
+    method: "GET",
+    token
+  });
+}
+
+async function signupWithInvite(payload) {
+  return apiFetch("/auth/signup-with-invite", {
+    method: "POST",
+    body: payload
+  });
+}
+
+function parseHashRoute() {
+  const raw = window.location.hash || "";
+  if (!raw.startsWith("#/")) return { path: "", query: {} };
+  const [pathPart, queryString] = raw.slice(2).split("?");
+  const params = new URLSearchParams(queryString || "");
+  const query = {};
+  for (const [key, value] of params.entries()) {
+    query[key] = value;
+  }
+  return { path: pathPart || "", query };
+}
+
+function copyTextToClipboard(text) {
+  if (navigator.clipboard?.writeText) {
+    return navigator.clipboard.writeText(text);
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.style.position = "fixed";
+  textarea.style.top = "-1000px";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  try {
+    document.execCommand("copy");
+  } finally {
+    document.body.removeChild(textarea);
+  }
+  return Promise.resolve();
+}
+
+function toNumber(value) {
+  if (value === "" || value === null || value === undefined) return null;
+  const parsed = Number(value);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function toInt(value) {
+  if (value === "" || value === null || value === undefined) return null;
+  const parsed = parseInt(value, 10);
+  return Number.isNaN(parsed) ? null : parsed;
 }
 
 // ---------- UI: Login Screen ----------
@@ -167,33 +306,201 @@ function LoginScreen({ onLoginSuccess, sessionMessage }) {
   );
 }
 
+// ---------- UI: Invite Signup Screen ----------
+function InviteSignupScreen({ inviteCode, onGoToLogin }) {
+  const [email, setEmail] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [success, setSuccess] = useState(false);
+
+  const doSignup = async () => {
+    setErr("");
+    if (!inviteCode) return setErr("Invite code is missing.");
+    if (!email.trim()) return setErr("Email is required.");
+    if (!password) return setErr("Password is required.");
+    if (password !== confirmPassword) return setErr("Passwords do not match.");
+
+    setBusy(true);
+    try {
+      await signupWithInvite({
+        invite_code: inviteCode,
+        email: email.trim(),
+        display_name: displayName.trim() || null,
+        password
+      });
+      setSuccess(true);
+    } catch (e) {
+      setErr(e.message || "Signup failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-cyan-50 p-4 flex items-center">
+      <div className="max-w-md mx-auto w-full">
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl p-8 border border-purple-100">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-3 bg-gradient-to-br from-purple-500 to-blue-500 rounded-xl text-white">
+              <Dumbbell />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-gray-800">Create Account</h1>
+              <p className="text-gray-600">Use your invite to join</p>
+            </div>
+          </div>
+
+          {success ? (
+            <div className="bg-green-50 border border-green-200 text-green-900 rounded-xl p-3 mb-4 text-sm">
+              Account created. You can now sign in.
+            </div>
+          ) : null}
+
+          {err && (
+            <div className="bg-red-50 border border-red-200 text-red-800 rounded-xl p-3 mb-4 text-sm">
+              {err}
+            </div>
+          )}
+
+          {!success && (
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-semibold text-gray-700">Email</label>
+                <input
+                  className="mt-1 w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  autoComplete="email"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-semibold text-gray-700">Display Name</label>
+                <input
+                  className="mt-1 w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  placeholder="Optional"
+                  autoComplete="name"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-semibold text-gray-700">Password</label>
+                <input
+                  className="mt-1 w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  type="password"
+                  autoComplete="new-password"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-semibold text-gray-700">Confirm Password</label>
+                <input
+                  className="mt-1 w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="••••••••"
+                  type="password"
+                  autoComplete="new-password"
+                  onKeyDown={(e) => { if (e.key === "Enter") doSignup(); }}
+                />
+              </div>
+
+              <button
+                onClick={doSignup}
+                disabled={busy}
+                className="w-full bg-gradient-to-r from-purple-600 to-blue-600 text-white py-4 rounded-2xl font-semibold text-lg hover:shadow-lg hover:scale-[1.01] transition-all disabled:opacity-60 disabled:hover:scale-100"
+              >
+                {busy ? "Creating..." : "Create Account"}
+              </button>
+            </div>
+          )}
+
+          <button
+            onClick={onGoToLogin}
+            className="mt-4 text-sm text-purple-700 font-semibold underline"
+          >
+            Back to login
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ---------- Main App ----------
 function PTClientTracker() {
+  const [route, setRoute] = useState(() => parseHashRoute());
   const [authToken, setAuthToken] = useState(localStorage.getItem(LS_TOKEN_KEY) || "");
   const [me, setMe] = useState(null);
   const [authMessage, setAuthMessage] = useState("");
 
   const [clients, setClients] = useState([]);
+  const [clientsLoading, setClientsLoading] = useState(false);
+  const [clientsError, setClientsError] = useState("");
   const [currentView, setCurrentView] = useState("list");
   const [selectedClient, setSelectedClient] = useState(null);
   const [newClientName, setNewClientName] = useState("");
-  const [sessionData, setSessionData] = useState({
-    date: new Date().toISOString().split("T")[0],
-    exercises: "",
+  const [sessions, setSessions] = useState([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [sessionsError, setSessionsError] = useState("");
+  const [selectedSession, setSelectedSession] = useState(null);
+  const [sessionDetails, setSessionDetails] = useState(null);
+  const [sessionItems, setSessionItems] = useState([]);
+  const [sessionForm, setSessionForm] = useState({
+    session_date: new Date().toISOString().split("T")[0],
+    status: "planned",
     notes: ""
   });
+  const [newItem, setNewItem] = useState({
+    name: "",
+    planned_weight: "",
+    planned_reps: "",
+    planned_sets: ""
+  });
+  const [invites, setInvites] = useState([]);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [inviteError, setInviteError] = useState("");
+  const [inviteSuccess, setInviteSuccess] = useState("");
+  const [lastInviteCode, setLastInviteCode] = useState("");
+  const [inviteListBusy, setInviteListBusy] = useState(false);
+  const [inviteListError, setInviteListError] = useState("");
 
-  // Load local clients/sessions
   useEffect(() => {
-    const saved = localStorage.getItem(LS_CLIENTS_KEY);
-    if (saved) {
-      try { setClients(JSON.parse(saved)); } catch (_) {}
+    if (!authToken) return;
+    let cancelled = false;
+    async function loadClients() {
+      setClientsLoading(true);
+      setClientsError("");
+      try {
+        const data = await fetchClients(authToken);
+        if (cancelled) return;
+        setClients(Array.isArray(data) ? data : []);
+      } catch (e) {
+        if (cancelled) return;
+        setClientsError(e.message || "Failed to load clients");
+      } finally {
+        if (!cancelled) setClientsLoading(false);
+      }
     }
-  }, []);
+    loadClients();
+    return () => { cancelled = true; };
+  }, [authToken]);
 
   useEffect(() => {
-    localStorage.setItem(LS_CLIENTS_KEY, JSON.stringify(clients));
-  }, [clients]);
+    const handleHashChange = () => setRoute(parseHashRoute());
+    window.addEventListener("hashchange", handleHashChange);
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, []);
 
   // If token exists, load /auth/me
   useEffect(() => {
@@ -235,6 +542,12 @@ function PTClientTracker() {
     });
   }, []);
 
+  useEffect(() => {
+    if (me?.is_admin !== true && currentView === "invites") {
+      setCurrentView("list");
+    }
+  }, [currentView, me]);
+
   const handleLoginSuccess = async (token) => {
     localStorage.setItem(LS_TOKEN_KEY, token);
     setAuthToken(token);
@@ -249,13 +562,180 @@ function PTClientTracker() {
     }
   };
 
+  const goToLogin = () => {
+    window.location.hash = "";
+  };
+
   const logout = () => {
     localStorage.removeItem(LS_TOKEN_KEY);
     setAuthToken("");
     setMe(null);
+    setClients([]);
+    setSessions([]);
+    setSessionDetails(null);
+    setSessionItems([]);
     setCurrentView("list");
     setAuthMessage("");
   };
+
+  const handleCreateInvite = async () => {
+    setInviteError("");
+    setInviteSuccess("");
+    setLastInviteCode("");
+    if (!inviteEmail.trim()) {
+      setInviteError("Enter an email to label the invite.");
+      return;
+    }
+    setInviteBusy(true);
+    try {
+      const invite = await createInvite(authToken);
+      const inviteLink = `https://tracker.rubyavenue.co.uk/#/signup?invite=${encodeURIComponent(invite.code)}`;
+      setInviteSuccess(`Invite created for ${inviteEmail.trim()}. Code: ${invite.code}`);
+      setLastInviteCode(invite.code);
+      setInviteEmail("");
+      await copyTextToClipboard(inviteLink);
+      await refreshInvites();
+    } catch (e) {
+      setInviteError(e.message || "Failed to create invite");
+    } finally {
+      setInviteBusy(false);
+    }
+  };
+
+  const refreshInvites = async () => {
+    setInviteListError("");
+    setInviteListBusy(true);
+    try {
+      const data = await listInvites(authToken);
+      setInvites(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setInviteListError(e.message || "Failed to load invites");
+    } finally {
+      setInviteListBusy(false);
+    }
+  };
+
+  const loadSessions = async (clientId) => {
+    setSessionsLoading(true);
+    setSessionsError("");
+    try {
+      const data = await fetchClientSessions(authToken, clientId);
+      setSessions(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setSessionsError(e.message || "Failed to load sessions");
+    } finally {
+      setSessionsLoading(false);
+    }
+  };
+
+  const openSession = async (sessionId) => {
+    setSelectedSession(sessionId);
+    setSessionDetails(null);
+    setSessionItems([]);
+    try {
+      const data = await fetchSessionRequest(authToken, sessionId);
+      setSessionDetails(data);
+      setSessionItems(Array.isArray(data.items) ? data.items : []);
+      setSessionForm({
+        session_date: data.session_date,
+        status: data.status || "planned",
+        notes: data.notes || ""
+      });
+      setCurrentView("session");
+    } catch (e) {
+      setSessionsError(e.message || "Failed to load session");
+    }
+  };
+
+  const handleCreateSession = async () => {
+    if (!selectedClient) return;
+    setSessionsError("");
+    try {
+      await createSessionRequest(authToken, selectedClient.id, {
+        session_date: sessionForm.session_date,
+        status: sessionForm.status,
+        notes: sessionForm.notes || null
+      });
+      await loadSessions(selectedClient.id);
+    } catch (e) {
+      setSessionsError(e.message || "Failed to create session");
+    }
+  };
+
+  const handleUpdateSession = async () => {
+    if (!selectedSession) return;
+    setSessionsError("");
+    try {
+      const data = await updateSessionRequest(authToken, selectedSession, {
+        session_date: sessionForm.session_date,
+        status: sessionForm.status,
+        notes: sessionForm.notes || null
+      });
+      setSessionDetails(data);
+      await loadSessions(data.client_id);
+    } catch (e) {
+      setSessionsError(e.message || "Failed to update session");
+    }
+  };
+
+  const handleAddItem = async () => {
+    if (!selectedSession) return;
+    if (!newItem.name.trim()) return;
+    setSessionsError("");
+    try {
+      await createSessionItemRequest(authToken, selectedSession, {
+        name: newItem.name.trim(),
+        planned_weight: toNumber(newItem.planned_weight),
+        planned_reps: toInt(newItem.planned_reps),
+        planned_sets: toInt(newItem.planned_sets)
+      });
+      const data = await fetchSessionRequest(authToken, selectedSession);
+      setSessionItems(Array.isArray(data.items) ? data.items : []);
+      setNewItem({ name: "", planned_weight: "", planned_reps: "", planned_sets: "" });
+    } catch (e) {
+      setSessionsError(e.message || "Failed to add item");
+    }
+  };
+
+  const handleUpdateItem = async (item) => {
+    if (!selectedSession) return;
+    setSessionsError("");
+    try {
+      const payload = {
+        name: item.name,
+        order_index: item.order_index,
+        planned_weight: toNumber(item.planned_weight),
+        planned_reps: toInt(item.planned_reps),
+        planned_sets: toInt(item.planned_sets),
+        actual_weight: toNumber(item.actual_weight),
+        actual_reps: toInt(item.actual_reps),
+        actual_sets: toInt(item.actual_sets),
+        notes: item.notes || null,
+        metrics: item.metrics || null
+      };
+      const updated = await updateSessionItemRequest(authToken, selectedSession, item.id, payload);
+      setSessionItems((prev) => prev.map((row) => (row.id === updated.id ? updated : row)));
+    } catch (e) {
+      setSessionsError(e.message || "Failed to update item");
+    }
+  };
+
+  const handleDeleteItem = async (itemId) => {
+    if (!selectedSession) return;
+    setSessionsError("");
+    try {
+      await deleteSessionItemRequest(authToken, selectedSession, itemId);
+      setSessionItems((prev) => prev.filter((row) => row.id !== itemId));
+    } catch (e) {
+      setSessionsError(e.message || "Failed to delete item");
+    }
+  };
+
+  if (route.path === "signup") {
+    return (
+      <InviteSignupScreen inviteCode={route.query.invite || ""} onGoToLogin={goToLogin} />
+    );
+  }
 
   // If not logged in (or token invalid), show login
   if (!authToken || !me) {
@@ -266,75 +746,30 @@ function PTClientTracker() {
     );
   }
 
-  const isAdmin = me?.role === "admin";
+  const isAdmin = me?.is_admin === true;
 
   // ---------- Existing functions (local storage) ----------
   const addClient = () => {
     if (!newClientName.trim()) return;
-
-    const newClient = {
-      id: Date.now(),
-      name: newClientName.trim(),
-      sessions: []
-    };
-
-    setClients([...clients, newClient]);
-    setNewClientName("");
-    setCurrentView("list");
-  };
-
-  const addSession = () => {
-    if (!sessionData.exercises.trim()) return;
-
-    const newSession = {
-      id: Date.now(),
-      date: sessionData.date,
-      exercises: sessionData.exercises,
-      notes: sessionData.notes
-    };
-
-    const updatedClients = clients.map((client) => {
-      if (client.id === selectedClient.id) {
-        return {
-          ...client,
-          sessions: [newSession, ...client.sessions]
-        };
-      }
-      return client;
-    });
-
-    setClients(updatedClients);
-    setSessionData({
-      date: new Date().toISOString().split("T")[0],
-      exercises: "",
-      notes: ""
-    });
-
-    const updated = updatedClients.find((c) => c.id === selectedClient.id);
-    setSelectedClient(updated);
-    setCurrentView("client");
-  };
-
-  const deleteSession = (sessionId) => {
-    const updatedClients = clients.map((client) => {
-      if (client.id === selectedClient.id) {
-        return {
-          ...client,
-          sessions: client.sessions.filter((s) => s.id !== sessionId)
-        };
-      }
-      return client;
-    });
-
-    setClients(updatedClients);
-    const updated = updatedClients.find((c) => c.id === selectedClient.id);
-    setSelectedClient(updated);
+    setClientsError("");
+    createClientRequest(authToken, { name: newClientName.trim() })
+      .then((created) => {
+        setClients((prev) => [created, ...prev]);
+        setNewClientName("");
+        setCurrentView("list");
+      })
+      .catch((e) => setClientsError(e.message || "Failed to create client"));
   };
 
   const deleteClient = (clientId) => {
     if (window.confirm("Delete this client and all their sessions?")) {
-      setClients(clients.filter((c) => c.id !== clientId));
-      setCurrentView("list");
+      setClientsError("");
+      deleteClientRequest(authToken, clientId)
+        .then(() => {
+          setClients((prev) => prev.filter((c) => c.id !== clientId));
+          setCurrentView("list");
+        })
+        .catch((e) => setClientsError(e.message || "Failed to delete client"));
     }
   };
 
@@ -350,27 +785,7 @@ function PTClientTracker() {
   };
 
   const importData = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const imported = JSON.parse(event.target.result);
-        if (Array.isArray(imported)) {
-          if (window.confirm("This will replace all current data. Continue?")) {
-            setClients(imported);
-            setCurrentView("list");
-            alert("Data imported successfully!");
-          }
-        } else {
-          alert("Invalid backup file format");
-        }
-      } catch (err) {
-        alert("Error reading backup file");
-      }
-    };
-    reader.readAsText(file);
+    alert("Import is not supported yet. Please create clients through the app.");
     e.target.value = "";
   };
 
@@ -423,6 +838,20 @@ function PTClientTracker() {
             </label>
           </div>
 
+          {isAdmin && (
+            <div className="mt-6">
+              <button
+                onClick={() => {
+                  setCurrentView("invites");
+                  refreshInvites();
+                }}
+                className="w-full bg-gradient-to-r from-purple-600 to-blue-600 text-white py-4 rounded-2xl font-semibold text-lg hover:shadow-lg hover:scale-[1.01] transition-all"
+              >
+                Manage Invites
+              </button>
+            </div>
+          )}
+
           <div className="bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-200 rounded-2xl p-6 mt-6 shadow-md">
             <h3 className="font-bold text-amber-900 mb-3 flex items-center gap-2 text-lg">💡 Backup Tips</h3>
             <ul className="text-sm text-amber-800 space-y-2">
@@ -430,6 +859,285 @@ function PTClientTracker() {
               <li className="flex items-start gap-2"><span className="text-amber-500 font-bold">•</span><span>Save backup files to Google Drive/Dropbox or email them to yourself</span></li>
               <li className="flex items-start gap-2"><span className="text-amber-500 font-bold">•</span><span>Keep multiple backups in case one gets corrupted</span></li>
             </ul>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ---------- INVITES VIEW ----------
+  if (currentView === "invites" && isAdmin) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-cyan-50 p-4">
+        <div className="max-w-2xl mx-auto">
+          <button
+            onClick={() => setCurrentView("menu")}
+            className="mb-6 flex items-center gap-2 text-purple-600 font-semibold text-lg hover:text-purple-700 transition"
+          >
+            <ArrowLeft /> Back
+          </button>
+
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl p-6 border border-purple-100 mb-6">
+            <h2 className="text-2xl font-bold text-gray-800 mb-4">Admin Invites</h2>
+
+            {inviteError && (
+              <div className="bg-red-50 border border-red-200 text-red-800 rounded-xl p-3 mb-4 text-sm">
+                {inviteError}
+              </div>
+            )}
+            {inviteSuccess && (
+              <div className="bg-green-50 border border-green-200 text-green-900 rounded-xl p-3 mb-4 text-sm">
+                <div className="mb-2">{inviteSuccess}</div>
+                {lastInviteCode && (
+                  <button
+                    onClick={() => copyTextToClipboard(`https://tracker.rubyavenue.co.uk/#/signup?invite=${encodeURIComponent(lastInviteCode)}`)}
+                    className="px-3 py-2 text-xs font-semibold rounded-lg bg-green-100 text-green-800 hover:bg-green-200 transition"
+                  >
+                    Copy invite link
+                  </button>
+                )}
+              </div>
+            )}
+
+            <div className="flex flex-col gap-3">
+              <input
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                placeholder="Invitee email (for your reference)"
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+              />
+              <div className="flex gap-3 flex-wrap">
+                <button
+                  onClick={handleCreateInvite}
+                  disabled={inviteBusy}
+                  className="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 text-white py-3 rounded-xl font-semibold hover:shadow-lg transition disabled:opacity-60"
+                >
+                  {inviteBusy ? "Creating..." : "Create invite"}
+                </button>
+                <button
+                  onClick={refreshInvites}
+                  disabled={inviteListBusy}
+                  className="flex-1 bg-white text-gray-800 border border-gray-200 py-3 rounded-xl font-semibold hover:bg-gray-50 transition disabled:opacity-60"
+                >
+                  {inviteListBusy ? "Refreshing..." : "Refresh invites"}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl p-6 border border-purple-100">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-gray-800">Recent Invites</h3>
+              <span className="text-xs text-gray-500">{invites.length} total</span>
+            </div>
+
+            {inviteListError && (
+              <div className="bg-red-50 border border-red-200 text-red-800 rounded-xl p-3 mb-4 text-sm">
+                {inviteListError}
+              </div>
+            )}
+
+            {invites.length === 0 ? (
+              <div className="text-sm text-gray-600">No invites yet.</div>
+            ) : (
+              <div className="space-y-3">
+                {invites.map((invite) => {
+                  const inviteLink = `https://tracker.rubyavenue.co.uk/#/signup?invite=${encodeURIComponent(invite.code)}`;
+                  return (
+                    <div key={invite.id} className="bg-white border border-gray-200 rounded-xl p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="font-mono text-sm text-gray-800">{invite.code}</div>
+                          <div className="text-xs text-gray-500">
+                            Created: {invite.created_at ? new Date(invite.created_at).toLocaleString() : "unknown"}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            Status: {invite.used_at ? "used" : "unused"}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => copyTextToClipboard(inviteLink)}
+                          className="px-3 py-2 text-xs font-semibold rounded-lg bg-purple-100 text-purple-700 hover:bg-purple-200 transition"
+                        >
+                          Copy invite link
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ---------- SESSION VIEW ----------
+  if (currentView === "session" && sessionDetails) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-cyan-50 p-4">
+        <div className="max-w-4xl mx-auto">
+          <button
+            onClick={() => setCurrentView("client")}
+            className="mb-6 flex items-center gap-2 text-purple-600 font-semibold text-lg hover:text-purple-700 transition"
+          >
+            <ArrowLeft /> Back
+          </button>
+
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl p-6 border border-purple-100 mb-6">
+            <h2 className="text-2xl font-bold text-gray-800 mb-4">Session Editor</h2>
+
+            {sessionsError && (
+              <div className="bg-red-50 border border-red-200 text-red-800 rounded-xl p-3 mb-4 text-sm">
+                {sessionsError}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+              <input
+                type="date"
+                value={sessionForm.session_date}
+                onChange={(e) => setSessionForm({ ...sessionForm, session_date: e.target.value })}
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+              />
+              <select
+                value={sessionForm.status}
+                onChange={(e) => setSessionForm({ ...sessionForm, status: e.target.value })}
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+              >
+                <option value="planned">Planned</option>
+                <option value="in_progress">In progress</option>
+                <option value="completed">Completed</option>
+              </select>
+              <button
+                onClick={handleUpdateSession}
+                className="w-full bg-gradient-to-r from-purple-600 to-blue-600 text-white py-3 rounded-xl font-semibold hover:shadow-lg transition"
+              >
+                Save Session
+              </button>
+            </div>
+
+            <textarea
+              value={sessionForm.notes}
+              onChange={(e) => setSessionForm({ ...sessionForm, notes: e.target.value })}
+              placeholder="Session notes (optional)"
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white min-h-[90px]"
+            />
+          </div>
+
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl p-6 border border-purple-100 mb-6">
+            <h3 className="text-lg font-bold text-gray-800 mb-4">Add Item</h3>
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+              <input
+                value={newItem.name}
+                onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
+                placeholder="Exercise name"
+                className="md:col-span-2 px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+              />
+              <input
+                value={newItem.planned_weight}
+                onChange={(e) => setNewItem({ ...newItem, planned_weight: e.target.value })}
+                placeholder="Planned wt"
+                className="px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+              />
+              <input
+                value={newItem.planned_reps}
+                onChange={(e) => setNewItem({ ...newItem, planned_reps: e.target.value })}
+                placeholder="Planned reps"
+                className="px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+              />
+              <input
+                value={newItem.planned_sets}
+                onChange={(e) => setNewItem({ ...newItem, planned_sets: e.target.value })}
+                placeholder="Planned sets"
+                className="px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+              />
+            </div>
+            <button
+              onClick={handleAddItem}
+              className="mt-4 w-full bg-gradient-to-r from-purple-600 to-blue-600 text-white py-3 rounded-xl font-semibold hover:shadow-lg transition"
+            >
+              Add Item
+            </button>
+          </div>
+
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl p-6 border border-purple-100">
+            <h3 className="text-lg font-bold text-gray-800 mb-4">Session Items</h3>
+            {sessionItems.length === 0 ? (
+              <div className="text-sm text-gray-600">No items yet.</div>
+            ) : (
+              <div className="space-y-4">
+                {sessionItems.map((item) => (
+                  <div key={item.id} className="border border-gray-200 rounded-xl p-4">
+                    <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
+                      <input
+                        value={item.name || ""}
+                        onChange={(e) => setSessionItems((prev) => prev.map((row) => row.id === item.id ? { ...row, name: e.target.value } : row))}
+                        placeholder="Exercise"
+                        className="md:col-span-2 px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                      />
+                      <input
+                        value={item.planned_weight ?? ""}
+                        onChange={(e) => setSessionItems((prev) => prev.map((row) => row.id === item.id ? { ...row, planned_weight: e.target.value } : row))}
+                        placeholder="Plan wt"
+                        className="px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                      />
+                      <input
+                        value={item.planned_reps ?? ""}
+                        onChange={(e) => setSessionItems((prev) => prev.map((row) => row.id === item.id ? { ...row, planned_reps: e.target.value } : row))}
+                        placeholder="Plan reps"
+                        className="px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                      />
+                      <input
+                        value={item.planned_sets ?? ""}
+                        onChange={(e) => setSessionItems((prev) => prev.map((row) => row.id === item.id ? { ...row, planned_sets: e.target.value } : row))}
+                        placeholder="Plan sets"
+                        className="px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                      />
+                      <input
+                        value={item.actual_weight ?? ""}
+                        onChange={(e) => setSessionItems((prev) => prev.map((row) => row.id === item.id ? { ...row, actual_weight: e.target.value } : row))}
+                        placeholder="Actual wt"
+                        className="px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                      />
+                      <input
+                        value={item.actual_reps ?? ""}
+                        onChange={(e) => setSessionItems((prev) => prev.map((row) => row.id === item.id ? { ...row, actual_reps: e.target.value } : row))}
+                        placeholder="Actual reps"
+                        className="px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                      />
+                      <input
+                        value={item.actual_sets ?? ""}
+                        onChange={(e) => setSessionItems((prev) => prev.map((row) => row.id === item.id ? { ...row, actual_sets: e.target.value } : row))}
+                        placeholder="Actual sets"
+                        className="px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                      />
+                      <input
+                        value={item.notes || ""}
+                        onChange={(e) => setSessionItems((prev) => prev.map((row) => row.id === item.id ? { ...row, notes: e.target.value } : row))}
+                        placeholder="Notes"
+                        className="md:col-span-3 px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                      />
+                      <div className="flex gap-2 md:col-span-3">
+                        <button
+                          onClick={() => handleUpdateItem(item)}
+                          className="flex-1 bg-white border border-gray-200 text-gray-800 py-2 rounded-lg font-semibold hover:bg-gray-50 transition"
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={() => handleDeleteItem(item.id)}
+                          className="flex-1 bg-red-50 text-red-700 border border-red-200 py-2 rounded-lg font-semibold hover:bg-red-100 transition"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -449,7 +1157,7 @@ function PTClientTracker() {
               <div>
                 <h1 className="text-2xl font-bold text-gray-800">{(me.display_name || "PT Tracker")} @ Maxx</h1>
                 <p className="text-gray-600">{clients.length} clients</p>
-                <p className="text-xs text-gray-500">{me.email || "Unknown email"} · {isAdmin ? "admin" : (me.role || "user")}</p>
+                <p className="text-xs text-gray-500">{me.email || "Unknown email"} · {isAdmin ? "admin" : "trainer"}</p>
               </div>
             </div>
 
@@ -482,8 +1190,20 @@ function PTClientTracker() {
             </div>
           </div>
 
+          {clientsError && (
+            <div className="bg-red-50 border border-red-200 text-red-800 rounded-2xl p-3 mb-4 text-sm">
+              {clientsError}
+            </div>
+          )}
+
           <div className="space-y-3">
-            {clients.length === 0 && (
+            {clientsLoading && (
+              <div className="text-center text-gray-600 bg-white/70 rounded-2xl p-6 border border-purple-100">
+                Loading clients...
+              </div>
+            )}
+
+            {!clientsLoading && clients.length === 0 && (
               <div className="text-center text-gray-600 bg-white/70 rounded-2xl p-8 border border-purple-100">
                 No clients yet — add your first one above.
               </div>
@@ -498,6 +1218,12 @@ function PTClientTracker() {
                   className="flex-1 text-left"
                   onClick={() => {
                     setSelectedClient(client);
+                    setSessionForm({
+                      session_date: new Date().toISOString().split("T")[0],
+                      status: "planned",
+                      notes: ""
+                    });
+                    loadSessions(client.id);
                     setCurrentView("client");
                   }}
                 >
@@ -540,72 +1266,87 @@ function PTClientTracker() {
             <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
               <User /> {selectedClient.name}
             </h2>
-            <p className="text-gray-600 mt-1">{selectedClient.sessions?.length || 0} sessions</p>
+            <p className="text-gray-600 mt-1">{sessions.length} sessions</p>
           </div>
 
           <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl p-6 border border-purple-100 mb-6">
             <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-              <Calendar /> Add Session
+              <Calendar /> Create Session
             </h3>
 
             <div className="space-y-3">
-              <input
-                type="date"
-                value={sessionData.date}
-                onChange={(e) => setSessionData({ ...sessionData, date: e.target.value })}
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
-              />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <input
+                  type="date"
+                  value={sessionForm.session_date}
+                  onChange={(e) => setSessionForm({ ...sessionForm, session_date: e.target.value })}
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                />
+                <select
+                  value={sessionForm.status}
+                  onChange={(e) => setSessionForm({ ...sessionForm, status: e.target.value })}
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                >
+                  <option value="planned">Planned</option>
+                  <option value="in_progress">In progress</option>
+                  <option value="completed">Completed</option>
+                </select>
+              </div>
 
               <textarea
-                value={sessionData.exercises}
-                onChange={(e) => setSessionData({ ...sessionData, exercises: e.target.value })}
-                placeholder="Exercises (e.g., Squat 3x5, Bench 3x8...)"
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white min-h-[110px]"
-              />
-
-              <textarea
-                value={sessionData.notes}
-                onChange={(e) => setSessionData({ ...sessionData, notes: e.target.value })}
-                placeholder="Notes (optional)"
+                value={sessionForm.notes}
+                onChange={(e) => setSessionForm({ ...sessionForm, notes: e.target.value })}
+                placeholder="Session notes (optional)"
                 className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white min-h-[90px]"
               />
 
               <button
-                onClick={addSession}
+                onClick={handleCreateSession}
                 className="w-full bg-gradient-to-r from-purple-600 to-blue-600 text-white py-4 rounded-2xl font-semibold text-lg hover:shadow-lg hover:scale-[1.01] transition-all"
               >
-                Add Session
+                Create Session
               </button>
             </div>
           </div>
 
           <div className="space-y-3">
-            {(selectedClient.sessions || []).map((s) => (
+            {sessionsError && (
+              <div className="bg-red-50 border border-red-200 text-red-800 rounded-2xl p-3 text-sm">
+                {sessionsError}
+              </div>
+            )}
+
+            {sessionsLoading && (
+              <div className="text-center text-gray-600 bg-white/70 rounded-2xl p-6 border border-purple-100">
+                Loading sessions...
+              </div>
+            )}
+
+            {!sessionsLoading && sessions.length === 0 && (
+              <div className="text-center text-gray-600 bg-white/70 rounded-2xl p-8 border border-purple-100">
+                No sessions yet — create the first one above.
+              </div>
+            )}
+
+            {sessions.map((s) => (
               <div key={s.id} className="bg-white/80 backdrop-blur-sm rounded-2xl shadow p-5 border border-purple-100">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <div className="font-bold text-gray-800">{s.date}</div>
-                    <div className="text-gray-700 whitespace-pre-wrap mt-2">{s.exercises}</div>
+                    <div className="font-bold text-gray-800">{s.session_date}</div>
+                    <div className="text-sm text-gray-600 mt-1">Status: {s.status || "planned"}</div>
                     {s.notes?.trim() ? (
                       <div className="text-sm text-gray-600 whitespace-pre-wrap mt-2">{s.notes}</div>
                     ) : null}
                   </div>
                   <button
-                    onClick={() => deleteSession(s.id)}
-                    className="p-3 rounded-xl hover:bg-red-50 text-red-600 transition"
-                    title="Delete session"
+                    onClick={() => openSession(s.id)}
+                    className="px-4 py-2 rounded-xl bg-white border border-gray-200 text-gray-800 font-semibold hover:bg-gray-50 transition"
                   >
-                    <Trash2 />
+                    Open
                   </button>
                 </div>
               </div>
             ))}
-
-            {(selectedClient.sessions || []).length === 0 && (
-              <div className="text-center text-gray-600 bg-white/70 rounded-2xl p-8 border border-purple-100">
-                No sessions yet — add the first one above.
-              </div>
-            )}
           </div>
         </div>
       </div>

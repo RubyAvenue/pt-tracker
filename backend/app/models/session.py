@@ -1,7 +1,7 @@
 from datetime import date, datetime
 import uuid
 
-from sqlalchemy import Date, DateTime, ForeignKey, Text
+from sqlalchemy import Date, DateTime, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -22,8 +22,9 @@ class Session(Base):
         ForeignKey("clients.id", ondelete="CASCADE"), index=True
     )
     session_date: Mapped[date] = mapped_column(Date, index=True)
+    status: Mapped[str] = mapped_column(String(32), server_default="planned")
     exercises_text: Mapped[str] = mapped_column(Text)
-    notes_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    notes: Mapped[str | None] = mapped_column("notes_text", Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -31,3 +32,4 @@ class Session(Base):
 
     user = relationship("User", back_populates="sessions")
     client = relationship("Client", back_populates="sessions")
+    items = relationship("SessionItem", back_populates="session", cascade="all, delete-orphan")

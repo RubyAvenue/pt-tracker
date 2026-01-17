@@ -17,9 +17,10 @@ router = APIRouter(prefix="/clients", tags=["clients"])
 def list_clients(
     db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ) -> list[ClientRead]:
-    return db.scalars(
-        select(Client).where(Client.user_id == user.id).order_by(Client.created_at.desc())
-    ).all()
+    stmt = select(Client).order_by(Client.created_at.desc())
+    if not user.is_admin:
+        stmt = stmt.where(Client.user_id == user.id)
+    return db.scalars(stmt).all()
 
 
 @router.post("", response_model=ClientRead, status_code=status.HTTP_201_CREATED)
@@ -41,9 +42,10 @@ def get_client(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ClientRead:
-    client = db.scalar(
-        select(Client).where(Client.id == client_id, Client.user_id == user.id)
-    )
+    stmt = select(Client).where(Client.id == client_id)
+    if not user.is_admin:
+        stmt = stmt.where(Client.user_id == user.id)
+    client = db.scalar(stmt)
     if not client:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
     return client
@@ -56,9 +58,10 @@ def update_client(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ClientRead:
-    client = db.scalar(
-        select(Client).where(Client.id == client_id, Client.user_id == user.id)
-    )
+    stmt = select(Client).where(Client.id == client_id)
+    if not user.is_admin:
+        stmt = stmt.where(Client.user_id == user.id)
+    client = db.scalar(stmt)
     if not client:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
     if payload.name is not None:
@@ -74,9 +77,10 @@ def delete_client(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> None:
-    client = db.scalar(
-        select(Client).where(Client.id == client_id, Client.user_id == user.id)
-    )
+    stmt = select(Client).where(Client.id == client_id)
+    if not user.is_admin:
+        stmt = stmt.where(Client.user_id == user.id)
+    client = db.scalar(stmt)
     if not client:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
     db.delete(client)

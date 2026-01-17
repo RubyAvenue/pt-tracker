@@ -1,7 +1,14 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import admin_router, auth_router, clients_router, health_router, trainers_router
+from app.api.routes import (
+    admin_router,
+    auth_router,
+    clients_router,
+    health_router,
+    sessions_router,
+    trainers_router,
+)
 from app.core.config import settings
 
 
@@ -25,4 +32,5 @@ app.include_router(health_router, prefix=settings.API_V1_STR)
 app.include_router(auth_router, prefix=settings.API_V1_STR)
 app.include_router(admin_router, prefix=settings.API_V1_STR)
 app.include_router(clients_router, prefix=settings.API_V1_STR)
+app.include_router(sessions_router, prefix=settings.API_V1_STR)
 app.include_router(trainers_router, prefix=settings.API_V1_STR)
