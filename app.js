@@ -473,6 +473,8 @@ function PTClientTracker() {
   const [sessions, setSessions] = useState([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [sessionsError, setSessionsError] = useState("");
+  const [sessionSaveStatus, setSessionSaveStatus] = useState(null);
+  const [itemSaveStatus, setItemSaveStatus] = useState({});
   const [clientTab, setClientTab] = useState("sessions");
   const [progressName, setProgressName] = useState("");
   const [progressLoading, setProgressLoading] = useState(false);
@@ -719,8 +721,12 @@ function PTClientTracker() {
       });
       setSessionDetails(data);
       await loadSessions(data.client_id);
+      setSessionSaveStatus({ type: "success", message: "Session saved" });
+      setTimeout(() => setSessionSaveStatus(null), 2000);
     } catch (e) {
       setSessionsError(e.message || "Failed to update session");
+      setSessionSaveStatus({ type: "error", message: "Save failed" });
+      setTimeout(() => setSessionSaveStatus(null), 4000);
     }
   };
 
@@ -761,8 +767,24 @@ function PTClientTracker() {
       };
       const updated = await updateSessionItemRequest(authToken, selectedSession, item.id, payload);
       setSessionItems((prev) => prev.map((row) => (row.id === updated.id ? updated : row)));
+      setItemSaveStatus((prev) => ({ ...prev, [item.id]: { type: "success", message: "Saved" } }));
+      setTimeout(() => {
+        setItemSaveStatus((prev) => {
+          const next = { ...prev };
+          delete next[item.id];
+          return next;
+        });
+      }, 2000);
     } catch (e) {
       setSessionsError(e.message || "Failed to update item");
+      setItemSaveStatus((prev) => ({ ...prev, [item.id]: { type: "error", message: "Save failed" } }));
+      setTimeout(() => {
+        setItemSaveStatus((prev) => {
+          const next = { ...prev };
+          delete next[item.id];
+          return next;
+        });
+      }, 4000);
     }
   };
 
@@ -1096,12 +1118,25 @@ function PTClientTracker() {
                 <option value="in_progress">In progress</option>
                 <option value="completed">Completed</option>
               </select>
-              <button
-                onClick={handleUpdateSession}
-                className="w-full bg-gradient-to-r from-purple-600 to-blue-600 text-white py-3 rounded-xl font-semibold hover:shadow-lg transition"
-              >
-                Save Session
-              </button>
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={handleUpdateSession}
+                  className="w-full bg-gradient-to-r from-purple-600 to-blue-600 text-white py-3 rounded-xl font-semibold hover:shadow-lg transition"
+                >
+                  Save Session
+                </button>
+                {sessionSaveStatus && (
+                  <div
+                    className={`text-xs font-semibold px-2 py-1 rounded-full w-fit ${
+                      sessionSaveStatus.type === "success"
+                        ? "bg-green-100 text-green-700"
+                        : "bg-red-100 text-red-700"
+                    }`}
+                  >
+                    {sessionSaveStatus.message}
+                  </div>
+                )}
+              </div>
             </div>
 
             <textarea
@@ -1218,6 +1253,17 @@ function PTClientTracker() {
                         >
                           Delete
                         </button>
+                        {itemSaveStatus[item.id] && (
+                          <span
+                            className={`self-center text-xs font-semibold px-2 py-1 rounded-full ${
+                              itemSaveStatus[item.id].type === "success"
+                                ? "bg-green-100 text-green-700"
+                                : "bg-red-100 text-red-700"
+                            }`}
+                          >
+                            {itemSaveStatus[item.id].message}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
